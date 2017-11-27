@@ -1,1 +1,6 @@
-INCLUDES += -I$(RIOTPKG)/wakaama/wakaama
+#INCLUDES += -I$(RIOTPKG)/wakaama/wakaama
+INCLUDES += -I$(PKGDIRBASE)/wakaama/core
+INCLUDES += -I$(PKGDIRBASE)/wakaama/core/er-coap-13
+INCLUDES += -I$(PKGDIRBASE)/wakaama/examples/client
+INCLUDES += -I$(RIOTPKG)/wakaama/core
+INCLUDES += -I$(RIOTPKG)/wakaama/examples/client

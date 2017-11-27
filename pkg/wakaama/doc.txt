@@ -5,3 +5,37 @@
  * @brief    Provides the Wakaama implementation of LwM2M
  * @see      https://github.com/eclipse/wakaama
  */
+
+
+
+
+TOOLS AND tinydtls are not clean (need WERROR=0 compiler flag). Core and examples are. 
+
+
+
+
+Build an example {LIGHT_CLIENT, CLIENT, BOOSTRAP_SERVER, SERVER} :
+
+-Add to your application makefile (eg for client):
+WAKAAMA_EXAMPLE = CLIENT
+
+-Include the test header (eg for client):
+#include "test_client.h"
+
+-call the main function (eg for client):
+wakaama_test_client_main();
+
+
+
+
+Makefile of pkg has been done to conserve the hierarchy of the wakaama repo.
+This eneable easier update if user want to compile it with WERROR=0.
+
+
+
+
+
+TO DO :
+-Clean\patch tools and tinydtls
+-Include the argument processing in the main of the examples (commented yet)
+-Add user input in terminal 

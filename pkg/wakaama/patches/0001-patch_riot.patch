@@ -1,0 +1,1099 @@
+From 4ea3b951732b39847d6edef1e582bb22db44be04 Mon Sep 17 00:00:00 2001
+From: Florian JEAN <florian.jean13@gmail.com>
+Date: Mon, 27 Nov 2017 11:36:21 +0100
+Subject: [PATCH] patch_riot
+
+---
+ core/bootstrap.c                                  |  11 +-
+ core/er-coap-13/er-coap-13.c                      |   5 +-
+ core/liblwm2m.c                                   |   1 +
+ core/objects.c                                    |   4 +-
+ core/observe.c                                    |   5 +-
+ core/packet.c                                     |   3 +
+ core/registration.c                               |   8 +-
+ core/utils.c                                      |   2 +
+ examples/bootstrap_server/bootstrap_info.c        |   3 +-
+ examples/bootstrap_server/bootstrap_server.c      |  10 +-
+ examples/bootstrap_server/test_bootstrap_server.h |   1 +
+ examples/client/lwm2mclient.c                     |  27 ++++-
+ examples/client/lwm2mclient.h                     |   2 +
+ examples/client/object_access_control.c           |   2 +-
+ examples/client/object_connectivity_stat.c        |   1 +
+ examples/client/object_device.c                   |   5 +-
+ examples/client/object_firmware.c                 |   1 +
+ examples/client/object_location.c                 |   1 +
+ examples/client/object_server.c                   |   4 +
+ examples/client/system_api.c                      |   3 +-
+ examples/client/test_object.c                     |   2 +
+ examples/lightclient/lightclient.c                |   6 +-
+ examples/lightclient/object_device.c              |   6 +-
+ examples/lightclient/object_security.c            |   2 +-
+ examples/lightclient/object_server.c              |   6 +-
+ examples/lightclient/test_light_client.h          |   1 +
+ examples/lightclient/test_object.c                |   2 +
+ examples/server/lwm2mserver.c                     |  16 ++-
+ examples/server/test_server.h                     |   1 +
+ examples/shared/commandline.c                     | 140 +++++++++++-----------
+ examples/shared/connection.c                      |   6 +-
+ examples/shared/connection.h                      |   2 +-
+ examples/shared/platform.c                        |   4 +-
+ 33 files changed, 189 insertions(+), 104 deletions(-)
+ create mode 100644 examples/bootstrap_server/test_bootstrap_server.h
+ create mode 100644 examples/lightclient/test_light_client.h
+ create mode 100644 examples/server/test_server.h
+
+diff --git a/core/bootstrap.c b/core/bootstrap.c
+index 611566b..21ae57e 100644
+--- a/core/bootstrap.c
++++ b/core/bootstrap.c
+@@ -148,11 +148,11 @@ void bootstrap_step(lwm2m_context_t * contextP,
+             break;
+ 
+         case STATE_BS_HOLD_OFF:
+-            if (targetP->registration <= currentTime)
++            if ((unsigned int) (targetP->registration) <= currentTime)
+             {
+                 prv_requestBootstrap(contextP, targetP);
+             }
+-            else if (*timeoutP > targetP->registration - currentTime)
++            else if ((unsigned int) (*timeoutP) > targetP->registration - currentTime)
+             {
+                 *timeoutP = targetP->registration - currentTime;
+             }
+@@ -163,12 +163,12 @@ void bootstrap_step(lwm2m_context_t * contextP,
+             break;
+ 
+         case STATE_BS_PENDING:
+-            if (targetP->registration <= currentTime)
++            if ((unsigned int) (targetP->registration) <= currentTime)
+             {
+                targetP->status = STATE_BS_FAILING;
+                *timeoutP = 0;
+             }
+-            else if (*timeoutP > targetP->registration - currentTime)
++            else if ((unsigned int) (*timeoutP) > targetP->registration - currentTime)
+             {
+                 *timeoutP = targetP->registration - currentTime;
+             }
+@@ -373,6 +373,7 @@ uint8_t bootstrap_handleCommand(lwm2m_context_t * contextP,
+                                 coap_packet_t * message,
+                                 coap_packet_t * response)
+ {
++    (void) response;
+     uint8_t result;
+     lwm2m_media_type_t format;
+ 
+@@ -580,6 +581,8 @@ uint8_t bootstrap_handleRequest(lwm2m_context_t * contextP,
+                                 coap_packet_t * message,
+                                 coap_packet_t * response)
+ {
++    (void) uriP;
++    (void) response;
+     uint8_t result;
+     char * name;
+ 
+diff --git a/core/er-coap-13/er-coap-13.c b/core/er-coap-13/er-coap-13.c
+index 67d1bb3..a003e19 100644
+--- a/core/er-coap-13/er-coap-13.c
++++ b/core/er-coap-13/er-coap-13.c
+@@ -381,7 +381,7 @@ coap_get_variable(const uint8_t *buffer, size_t length, const char *name, const
+ 
+ /*-----------------------------------------------------------------------------------*/
+ uint16_t
+-coap_get_mid()
++coap_get_mid(void)
+ {
+   return ++current_mid;
+ }
+@@ -853,6 +853,9 @@ coap_parse_message(void *packet, uint8_t *data, uint16_t data_len)
+ int
+ coap_get_query_variable(void *packet, const char *name, const char **output)
+ {
++  (void) packet;
++  (void) name;
++  (void) output;
+ /*
+   coap_packet_t *const coap_pkt = (coap_packet_t *) packet;
+ 
+diff --git a/core/liblwm2m.c b/core/liblwm2m.c
+index bf4b1b1..77bef35 100644
+--- a/core/liblwm2m.c
++++ b/core/liblwm2m.c
+@@ -366,6 +366,7 @@ int lwm2m_step(lwm2m_context_t * contextP,
+ {
+     time_t tv_sec;
+     int result;
++    (void) result;
+ 
+     LOG_ARG("timeoutP: %" PRId64, *timeoutP);
+     tv_sec = lwm2m_gettime();
+diff --git a/core/objects.c b/core/objects.c
+index f9b8962..3db17ea 100644
+--- a/core/objects.c
++++ b/core/objects.c
+@@ -553,7 +553,7 @@ int object_getRegisterPayloadBufferLength(lwm2m_context_t * contextP)
+         if (objectP->objID == LWM2M_SECURITY_OBJECT_ID) continue;
+ 
+         start = index;
+-        result = prv_getObjectTemplate(buffer, sizeof(buffer), objectP->objID);
++        result = prv_getObjectTemplate((uint8_t *) buffer, sizeof(buffer), objectP->objID);
+         if (result < 0) return 0;
+         length = result;
+         index += length;
+@@ -573,7 +573,7 @@ int object_getRegisterPayloadBufferLength(lwm2m_context_t * contextP)
+                     index += length;
+                 }
+ 
+-                result = utils_intToText(targetP->id, buffer, sizeof(buffer));
++                result = utils_intToText(targetP->id, (uint8_t *) buffer, sizeof(buffer));
+                 if (result == 0) return 0;
+                 index += result;
+ 
+diff --git a/core/observe.c b/core/observe.c
+index 711c1d1..1113836 100644
+--- a/core/observe.c
++++ b/core/observe.c
+@@ -161,6 +161,7 @@ uint8_t observe_handleRequest(lwm2m_context_t * contextP,
+                               coap_packet_t * message,
+                               coap_packet_t * response)
+ {
++    (void) size;
+     lwm2m_watcher_t * watcherP;
+     uint32_t count;
+ 
+@@ -649,7 +650,7 @@ void observe_step(lwm2m_context_t * contextP,
+                     {
+                         LOG_ARG("Checking minimal period (%d s)", watcherP->parameters->minPeriod);
+ 
+-                        if (watcherP->lastTime + watcherP->parameters->minPeriod > currentTime)
++                        if (watcherP->lastTime + watcherP->parameters->minPeriod > (unsigned int) (currentTime))
+                         {
+                             // Minimum Period did not elapse yet
+                             interval = watcherP->lastTime + watcherP->parameters->minPeriod - currentTime;
+@@ -671,7 +672,7 @@ void observe_step(lwm2m_context_t * contextP,
+                 {
+                     LOG_ARG("Checking maximal period (%d s)", watcherP->parameters->maxPeriod);
+ 
+-                    if (watcherP->lastTime + watcherP->parameters->maxPeriod <= currentTime)
++                    if (watcherP->lastTime + watcherP->parameters->maxPeriod <= (unsigned int) (currentTime))
+                     {
+                         LOG("Notify on maximal period");
+                         notify = true;
+diff --git a/core/packet.c b/core/packet.c
+index dc998d3..09930c6 100644
+--- a/core/packet.c
++++ b/core/packet.c
+@@ -97,6 +97,9 @@ static void handle_reset(lwm2m_context_t * contextP,
+                          void * fromSessionH,
+                          coap_packet_t * message)
+ {
++    (void) contextP;
++    (void) fromSessionH;
++    (void) message;
+ #ifdef LWM2M_CLIENT_MODE
+     LOG("Entering");
+     observe_cancel(contextP, message->mid, fromSessionH);
+diff --git a/core/registration.c b/core/registration.c
+index 55d6ed8..365e4d7 100644
+--- a/core/registration.c
++++ b/core/registration.c
+@@ -107,7 +107,7 @@ static int prv_getRegistrationQueryLength(lwm2m_context_t * contextP,
+     if (0 != server->lifetime)
+     {
+         index += strlen(QUERY_DELIMITER QUERY_LIFETIME);
+-        res = utils_intToText(server->lifetime, buffer, sizeof(buffer));
++        res = utils_intToText(server->lifetime, (uint8_t*) buffer, sizeof(buffer));
+         if (res == 0) return 0;
+         index += res;
+     }
+@@ -170,7 +170,7 @@ static int prv_getRegistrationQuery(lwm2m_context_t * contextP,
+         res = utils_stringCopy(buffer + index, length - index, QUERY_DELIMITER QUERY_LIFETIME);
+         if (res < 0) return 0;
+         index += res;
+-        res = utils_intToText(server->lifetime, buffer + index, length - index);
++        res = utils_intToText(server->lifetime, (uint8_t*) buffer + index, length - index);
+         if (res == 0) return 0;
+         index += res;
+     }
+@@ -534,6 +534,7 @@ lwm2m_status_t registration_getStatus(lwm2m_context_t * contextP)
+ static void prv_handleDeregistrationReply(lwm2m_transaction_t * transacP,
+                                           void * message)
+ {
++    (void) message;
+     lwm2m_server_t * targetP;
+ 
+     targetP = (lwm2m_server_t *)(transacP->userData);
+@@ -1283,6 +1284,9 @@ void registration_step(lwm2m_context_t * contextP,
+                        time_t currentTime,
+                        time_t * timeoutP)
+ {
++    (void) contextP;
++    (void) currentTime;
++    (void) timeoutP;
+ #ifdef LWM2M_CLIENT_MODE
+     lwm2m_server_t * targetP = contextP->serverList;
+ 
+diff --git a/core/utils.c b/core/utils.c
+index 715dec9..34fca03 100644
+--- a/core/utils.c
++++ b/core/utils.c
+@@ -376,6 +376,8 @@ lwm2m_server_t * utils_findServer(lwm2m_context_t * contextP,
+ lwm2m_server_t * utils_findBootstrapServer(lwm2m_context_t * contextP,
+                                            void * fromSessionH)
+ {
++    (void) contextP;
++    (void) fromSessionH;
+ #ifdef LWM2M_CLIENT_MODE
+ 
+     lwm2m_server_t * targetP;
+diff --git a/examples/bootstrap_server/bootstrap_info.c b/examples/bootstrap_server/bootstrap_info.c
+index dbb2e9b..aaea176 100644
+--- a/examples/bootstrap_server/bootstrap_info.c
++++ b/examples/bootstrap_server/bootstrap_info.c
+@@ -57,7 +57,7 @@ static int prv_find_next_section(FILE * fd,
+             i = 1;
+             while (line[i] != ']') i++;
+ 
+-            if (i < length)
++            if ((unsigned int) i < length)
+             {
+                 line[i] = 0;
+                 if (strcasecmp(line + 1, tag) == 0)
+@@ -619,6 +619,7 @@ bs_info_t *  bs_get_info(FILE * fd)
+     read_server_t * readSrvP;
+     bs_endpoint_info_t * cltInfoP;
+     bs_command_t * cmdP;
++    (void) cmdP;
+ 
+     infoP = (bs_info_t *)lwm2m_malloc(sizeof(bs_info_t));
+     if (infoP == NULL) return NULL;
+diff --git a/examples/bootstrap_server/bootstrap_server.c b/examples/bootstrap_server/bootstrap_server.c
+index 5f20125..b58d497 100644
+--- a/examples/bootstrap_server/bootstrap_server.c
++++ b/examples/bootstrap_server/bootstrap_server.c
+@@ -74,11 +74,14 @@ static int g_quit = 0;
+ static void prv_quit(char * buffer,
+                      void * user_data)
+ {
++    (void) buffer;
++    (void) user_data;
+     g_quit = 1;
+ }
+ 
+ void handle_sigint(int signum)
+ {
++    (void) signum;
+     prv_quit(NULL, NULL);
+ }
+ 
+@@ -303,6 +306,7 @@ static int prv_bootstrap_callback(void * sessionH,
+ {
+     internal_data_t * dataP = (internal_data_t *)userData;
+     uint8_t result;
++    (void) result;
+     endpoint_t * endP;
+ 
+     switch (status)
+@@ -473,7 +477,7 @@ syntax_error:
+ }
+ 
+ 
+-int main(int argc, char *argv[])
++int wakaama_test_bootstrap_server_main (void)
+ {
+     fd_set readfds;
+     struct timeval tv;
+@@ -482,6 +486,7 @@ int main(int argc, char *argv[])
+     internal_data_t data;
+     char * filename = "bootstrap_server.ini";
+     int opt;
++    (void) opt;
+     FILE * fd;
+     command_desc_t commands[] =
+     {
+@@ -497,7 +502,7 @@ int main(int argc, char *argv[])
+     memset(&data, 0, sizeof(internal_data_t));
+ 
+     data.addressFamily = AF_INET6;
+-
++    /*
+     opt = 1;
+     while (opt < argc)
+     {
+@@ -537,6 +542,7 @@ int main(int argc, char *argv[])
+         }
+         opt += 1;
+     }
++    */
+ 
+     data.sock = create_socket(port, data.addressFamily);
+     if (data.sock < 0)
+diff --git a/examples/bootstrap_server/test_bootstrap_server.h b/examples/bootstrap_server/test_bootstrap_server.h
+new file mode 100644
+index 0000000..881a4a3
+--- /dev/null
++++ b/examples/bootstrap_server/test_bootstrap_server.h
+@@ -0,0 +1 @@
++int wakaama_test_bootstrap_server_main (void);
+diff --git a/examples/client/lwm2mclient.c b/examples/client/lwm2mclient.c
+index f1b8e58..0e01121 100644
+--- a/examples/client/lwm2mclient.c
++++ b/examples/client/lwm2mclient.c
+@@ -111,11 +111,14 @@ typedef struct
+ static void prv_quit(char * buffer,
+                      void * user_data)
+ {
++    (void) buffer;
++    (void) user_data;
+     g_quit = 1;
+ }
+ 
+ void handle_sigint(int signum)
+ {
++    (void) signum;
+     g_quit = 2;
+ }
+ 
+@@ -306,6 +309,7 @@ void lwm2m_close_connection(void * sessionH,
+ static void prv_output_servers(char * buffer,
+                                void * user_data)
+ {
++    (void) buffer;
+     lwm2m_context_t * lwm2mH = (lwm2m_context_t *) user_data;
+     lwm2m_server_t * targetP;
+ 
+@@ -421,6 +425,7 @@ syntax_error:
+ static void prv_object_list(char * buffer,
+                             void * user_data)
+ {
++    (void) buffer;
+     lwm2m_context_t * lwm2mH = (lwm2m_context_t *)user_data;
+     lwm2m_object_t * objectP;
+ 
+@@ -560,6 +565,7 @@ static void update_battery_level(lwm2m_context_t * context)
+ static void prv_add(char * buffer,
+                     void * user_data)
+ {
++    (void) buffer;
+     lwm2m_context_t * lwm2mH = (lwm2m_context_t *)user_data;
+     lwm2m_object_t * objectP;
+     int res;
+@@ -587,6 +593,7 @@ static void prv_add(char * buffer,
+ static void prv_remove(char * buffer,
+                        void * user_data)
+ {
++    (void) buffer;
+     lwm2m_context_t * lwm2mH = (lwm2m_context_t *)user_data;
+     int res;
+ 
+@@ -609,6 +616,7 @@ static void prv_remove(char * buffer,
+ static void prv_initiate_bootstrap(char * buffer,
+                                    void * user_data)
+ {
++    (void) buffer;
+     lwm2m_context_t * lwm2mH = (lwm2m_context_t *)user_data;
+     lwm2m_server_t * targetP;
+ 
+@@ -625,6 +633,7 @@ static void prv_initiate_bootstrap(char * buffer,
+ static void prv_display_objects(char * buffer,
+                                 void * user_data)
+ {
++    (void) buffer;
+     lwm2m_context_t * lwm2mH = (lwm2m_context_t *)user_data;
+     lwm2m_object_t * object;
+ 
+@@ -664,6 +673,8 @@ static void prv_display_objects(char * buffer,
+ static void prv_display_backup(char * buffer,
+         void * user_data)
+ {
++   (void) buffer;
++   (void) user_data;
+    int i;
+    for (i = 0 ; i < BACKUP_OBJECT_COUNT ; i++) {
+        lwm2m_object_t * object = backupObjectArray[i];
+@@ -757,7 +768,7 @@ static void update_bootstrap_info(lwm2m_client_state_t * previousBootstrapState,
+     }
+ }
+ 
+-static void close_backup_object()
++static void close_backup_object(void)
+ {
+     int i;
+     for (i = 0; i < BACKUP_OBJECT_COUNT; i++) {
+@@ -800,7 +811,7 @@ void print_usage(void)
+     fprintf(stdout, "\r\n");
+ }
+ 
+-int main(int argc, char *argv[])
++int wakaama_test_client_main(void)
+ {
+     client_data_t data;
+     int result;
+@@ -814,8 +825,11 @@ int main(int argc, char *argv[])
+     int batterylevelchanging = 0;
+     time_t reboot_time = 0;
+     int opt;
++    (void) opt;
+     bool bootstrapRequested = false;
++    (void) bootstrapRequested;
+     bool serverPortChanged = false;
++    (void) serverPortChanged;
+ 
+ #ifdef LWM2M_BOOTSTRAP
+     lwm2m_client_state_t previousState = STATE_INITIAL;
+@@ -823,6 +837,7 @@ int main(int argc, char *argv[])
+ 
+     char * pskId = NULL;
+     char * psk = NULL;
++    (void) psk;
+     uint16_t pskLen = -1;
+     char * pskBuffer = NULL;
+ 
+@@ -860,7 +875,7 @@ int main(int argc, char *argv[])
+ 
+     memset(&data, 0, sizeof(client_data_t));
+     data.addressFamily = AF_INET6;
+-
++/*
+     opt = 1;
+     while (opt < argc)
+     {
+@@ -959,7 +974,7 @@ int main(int argc, char *argv[])
+         }
+         opt += 1;
+     }
+-
++*/
+     if (!server)
+     {
+         server = (AF_INET == data.addressFamily ? DEFAULT_SERVER_IPV4 : DEFAULT_SERVER_IPV6);
+@@ -1092,12 +1107,12 @@ int main(int argc, char *argv[])
+         fprintf(stderr, "Failed to create Access Control object instance\r\n");
+         return -1;
+     }
+-    else if (acc_ctrl_oi_add_ac_val(objArray[8], instId, 0, 0b000000000001111)==false)
++    else if (acc_ctrl_oi_add_ac_val(objArray[8], instId, 0, 0xF)==false) //0b000000000001111
+     {
+         fprintf(stderr, "Failed to create Access Control ACL default resource\r\n");
+         return -1;
+     }
+-    else if (acc_ctrl_oi_add_ac_val(objArray[8], instId, 999, 0b000000000000001)==false)
++    else if (acc_ctrl_oi_add_ac_val(objArray[8], instId, 999, 0x1)==false) //0b000000000000001
+     {
+         fprintf(stderr, "Failed to create Access Control ACL resource for serverId: 999\r\n");
+         return -1;
+diff --git a/examples/client/lwm2mclient.h b/examples/client/lwm2mclient.h
+index e952ce5..dc7b0ba 100644
+--- a/examples/client/lwm2mclient.h
++++ b/examples/client/lwm2mclient.h
+@@ -29,6 +29,8 @@
+ 
+ #include "liblwm2m.h"
+ 
++int wakaama_test_client_main(void);
++
+ extern int g_reboot;
+ 
+ /*
+diff --git a/examples/client/object_access_control.c b/examples/client/object_access_control.c
+index 053546d..1d3ea4f 100644
+--- a/examples/client/object_access_control.c
++++ b/examples/client/object_access_control.c
+@@ -274,7 +274,7 @@ static uint8_t prv_write_resources(uint16_t instanceId, int numData,
+                 }
+                 else
+                 {
+-                    for (ri=0; ri < tlvArray[i].value.asChildren.count; ri++)
++                    for (ri=0; (unsigned int) ri < tlvArray[i].value.asChildren.count; ri++)
+                     {
+                         if (1 != lwm2m_data_decode_int(&subTlvArray[ri], &value))
+                         {
+diff --git a/examples/client/object_connectivity_stat.c b/examples/client/object_connectivity_stat.c
+index 939b32b..1309ba5 100644
+--- a/examples/client/object_connectivity_stat.c
++++ b/examples/client/object_connectivity_stat.c
+@@ -150,6 +150,7 @@ static void prv_resetCounter(lwm2m_object_t* objectP, bool start)
+ static uint8_t prv_exec(uint16_t instanceId, uint16_t resourceId,
+                         uint8_t * buffer, int length, lwm2m_object_t * objectP)
+ {
++    (void) buffer;
+     // this is a single instance object
+     if (instanceId != 0)
+     {
+diff --git a/examples/client/object_device.c b/examples/client/object_device.c
+index 9e6e30c..bdafd1d 100644
+--- a/examples/client/object_device.c
++++ b/examples/client/object_device.c
+@@ -346,6 +346,7 @@ static uint8_t prv_device_discover(uint16_t instanceId,
+ {
+     uint8_t result;
+     int i;
++    (void) objectP;
+ 
+     // this is a single instance object
+     if (instanceId != 0)
+@@ -486,6 +487,7 @@ static uint8_t prv_device_execute(uint16_t instanceId,
+                                   int length,
+                                   lwm2m_object_t * objectP)
+ {
++    (void) buffer;
+     // this is a single instance object
+     if (instanceId != 0)
+     {
+@@ -514,6 +516,7 @@ static uint8_t prv_device_execute(uint16_t instanceId,
+ 
+ void display_device_object(lwm2m_object_t * object)
+ {
++    (void) object;
+ #ifdef WITH_LOGS
+     device_data_t * data = (device_data_t *)object->userData;
+     fprintf(stdout, "  /%u: Device object:\r\n", object->objID);
+@@ -525,7 +528,7 @@ void display_device_object(lwm2m_object_t * object)
+ #endif
+ }
+ 
+-lwm2m_object_t * get_object_device()
++lwm2m_object_t * get_object_device(void)
+ {
+     /*
+      * The get_object_device function create the object itself and return a pointer to the structure that represent it.
+diff --git a/examples/client/object_firmware.c b/examples/client/object_firmware.c
+index 507e4fa..fec0c1f 100644
+--- a/examples/client/object_firmware.c
++++ b/examples/client/object_firmware.c
+@@ -181,6 +181,7 @@ static uint8_t prv_firmware_execute(uint16_t instanceId,
+                                     int length,
+                                     lwm2m_object_t * objectP)
+ {
++    (void) buffer;
+     firmware_data_t * data = (firmware_data_t*)(objectP->userData);
+ 
+     // this is a single instance object
+diff --git a/examples/client/object_location.c b/examples/client/object_location.c
+index c8736c4..6202398 100644
+--- a/examples/client/object_location.c
++++ b/examples/client/object_location.c
+@@ -180,6 +180,7 @@ static uint8_t prv_location_read(uint16_t objInstId,
+ 
+ void display_location_object(lwm2m_object_t * object)
+ {
++    (void) object;
+ #ifdef WITH_LOGS
+     location_data_t * data = (location_data_t *)object->userData;
+     fprintf(stdout, "  /%u: Location object:\r\n", object->objID);
+diff --git a/examples/client/object_server.c b/examples/client/object_server.c
+index 2f0531e..a0f2967 100644
+--- a/examples/client/object_server.c
++++ b/examples/client/object_server.c
+@@ -147,6 +147,8 @@ static uint8_t prv_server_discover(uint16_t instanceId,
+                                    lwm2m_data_t ** dataArrayP,
+                                    lwm2m_object_t * objectP)
+ {
++    (void) instanceId;
++    (void) objectP;
+     uint8_t result;
+     int i;
+ 
+@@ -337,6 +339,8 @@ static uint8_t prv_server_execute(uint16_t instanceId,
+                                   lwm2m_object_t * objectP)
+ 
+ {
++    (void) buffer;
++    (void) length;
+     server_instance_t * targetP;
+ 
+     targetP = (server_instance_t *)lwm2m_list_find(objectP->instanceList, instanceId);
+diff --git a/examples/client/system_api.c b/examples/client/system_api.c
+index c099bcd..71e0460 100644
+--- a/examples/client/system_api.c
++++ b/examples/client/system_api.c
+@@ -53,9 +53,10 @@ void init_value_change(lwm2m_context_t * lwm2m)
+ 
+ void init_value_change(lwm2m_context_t * lwm2m)
+ {
++    (void) lwm2m;
+ }
+ 
+-void system_reboot()
++void system_reboot(void)
+ {
+     exit(1);
+ }
+diff --git a/examples/client/test_object.c b/examples/client/test_object.c
+index b5439f6..867c24b 100644
+--- a/examples/client/test_object.c
++++ b/examples/client/test_object.c
+@@ -176,6 +176,8 @@ static uint8_t prv_discover(uint16_t instanceId,
+                             lwm2m_data_t ** dataArrayP,
+                             lwm2m_object_t * objectP)
+ {
++    (void) objectP;
++    (void) instanceId;
+     int i;
+ 
+     // is the server asking for the full object ?
+diff --git a/examples/lightclient/lightclient.c b/examples/lightclient/lightclient.c
+index 43a0142..76d0029 100644
+--- a/examples/lightclient/lightclient.c
++++ b/examples/lightclient/lightclient.c
+@@ -99,6 +99,7 @@ typedef struct
+ 
+ void handle_sigint(int signum)
+ {
++    (void) signum;
+     g_quit = 1;
+ }
+ 
+@@ -319,7 +320,7 @@ void print_state(lwm2m_context_t * lwm2mH)
+ 
+ #define OBJ_COUNT 4
+ 
+-int main(int argc, char *argv[])
++int wakaama_test_light_client_main(void)
+ {
+     client_data_t data;
+     lwm2m_context_t * lwm2mH = NULL;
+@@ -330,11 +331,13 @@ int main(int argc, char *argv[])
+ 
+     int result;
+     int opt;
++    (void) opt;
+ 
+     memset(&data, 0, sizeof(client_data_t));
+ 
+     data.addressFamily = AF_INET6;
+ 
++    /*
+     opt = 1;
+     while (opt < argc)
+     {
+@@ -374,6 +377,7 @@ int main(int argc, char *argv[])
+         }
+         opt += 1;
+     }
++    */
+ 
+     /*
+      *This call an internal function that create an IPv6 socket on the port 5683.
+diff --git a/examples/lightclient/object_device.c b/examples/lightclient/object_device.c
+index edc3917..0fd9a5d 100644
+--- a/examples/lightclient/object_device.c
++++ b/examples/lightclient/object_device.c
+@@ -126,6 +126,7 @@ static uint8_t prv_device_read(uint16_t instanceId,
+                                lwm2m_data_t ** dataArrayP,
+                                lwm2m_object_t * objectP)
+ {
++    (void) objectP;
+     uint8_t result;
+     int i;
+ 
+@@ -169,6 +170,7 @@ static uint8_t prv_device_discover(uint16_t instanceId,
+                                    lwm2m_data_t ** dataArrayP,
+                                    lwm2m_object_t * objectP)
+ {
++    (void) objectP;
+     uint8_t result;
+     int i;
+ 
+@@ -225,6 +227,8 @@ static uint8_t prv_device_execute(uint16_t instanceId,
+                                   int length,
+                                   lwm2m_object_t * objectP)
+ {
++    (void) buffer;
++    (void) objectP;
+     // this is a single instance object
+     if (instanceId != 0)
+     {
+@@ -242,7 +246,7 @@ static uint8_t prv_device_execute(uint16_t instanceId,
+     return COAP_405_METHOD_NOT_ALLOWED;
+ }
+ 
+-lwm2m_object_t * get_object_device()
++lwm2m_object_t * get_object_device(void)
+ {
+     /*
+      * The get_object_device function create the object itself and return a pointer to the structure that represent it.
+diff --git a/examples/lightclient/object_security.c b/examples/lightclient/object_security.c
+index ee12ea7..22038c8 100644
+--- a/examples/lightclient/object_security.c
++++ b/examples/lightclient/object_security.c
+@@ -187,7 +187,7 @@ static uint8_t prv_security_read(uint16_t instanceId,
+     return result;
+ }
+ 
+-lwm2m_object_t * get_security_object()
++lwm2m_object_t * get_security_object(void)
+ {
+     lwm2m_object_t * securityObj;
+ 
+diff --git a/examples/lightclient/object_server.c b/examples/lightclient/object_server.c
+index 3aa0a80..1fe2215 100644
+--- a/examples/lightclient/object_server.c
++++ b/examples/lightclient/object_server.c
+@@ -129,6 +129,8 @@ static uint8_t prv_server_discover(uint16_t instanceId,
+                                    lwm2m_data_t ** dataArrayP,
+                                    lwm2m_object_t * objectP)
+ {
++    (void) instanceId;
++    (void) objectP;
+     uint8_t result;
+     int i;
+ 
+@@ -310,6 +312,8 @@ static uint8_t prv_server_execute(uint16_t instanceId,
+                                   lwm2m_object_t * objectP)
+ 
+ {
++    (void) buffer;
++    (void) length;
+     server_instance_t * targetP;
+ 
+     targetP = (server_instance_t *)lwm2m_list_find(objectP->instanceList, instanceId);
+@@ -372,7 +376,7 @@ static uint8_t prv_server_create(uint16_t instanceId,
+     return result;
+ }
+ 
+-lwm2m_object_t * get_server_object()
++lwm2m_object_t * get_server_object(void)
+ {
+     lwm2m_object_t * serverObj;
+ 
+diff --git a/examples/lightclient/test_light_client.h b/examples/lightclient/test_light_client.h
+new file mode 100644
+index 0000000..34c53ae
+--- /dev/null
++++ b/examples/lightclient/test_light_client.h
+@@ -0,0 +1 @@
++int wakaama_test_light_client_main(void);
+diff --git a/examples/lightclient/test_object.c b/examples/lightclient/test_object.c
+index 995f58d..54a7bb5 100644
+--- a/examples/lightclient/test_object.c
++++ b/examples/lightclient/test_object.c
+@@ -180,6 +180,8 @@ static uint8_t prv_discover(uint16_t instanceId,
+                             lwm2m_data_t ** dataArrayP,
+                             lwm2m_object_t * objectP)
+ {
++    (void) instanceId;
++    (void) objectP;
+     int i;
+ 
+     // is the server asking for the full object ?
+diff --git a/examples/server/lwm2mserver.c b/examples/server/lwm2mserver.c
+index bf25be0..e9bd7cc 100644
+--- a/examples/server/lwm2mserver.c
++++ b/examples/server/lwm2mserver.c
+@@ -140,6 +140,7 @@ static void prv_dump_client(lwm2m_client_t * targetP)
+ static void prv_output_clients(char * buffer,
+                                void * user_data)
+ {
++    (void) buffer;
+     lwm2m_context_t * lwm2mH = (lwm2m_context_t *) user_data;
+     lwm2m_client_t * targetP;
+ 
+@@ -188,6 +189,7 @@ static void prv_result_callback(uint16_t clientID,
+                                 int dataLength,
+                                 void * userData)
+ {
++    (void) userData;
+     fprintf(stdout, "\r\nClient #%d /%d", clientID, uriP->objectId);
+     if (LWM2M_URI_IS_SET_INSTANCE(uriP))
+         fprintf(stdout, "/%d", uriP->instanceId);
+@@ -213,6 +215,7 @@ static void prv_notify_callback(uint16_t clientID,
+                                 int dataLength,
+                                 void * userData)
+ {
++    (void) userData;
+     fprintf(stdout, "\r\nNotify from client #%d /%d", clientID, uriP->objectId);
+     if (LWM2M_URI_IS_SET_INSTANCE(uriP))
+         fprintf(stdout, "/%d", uriP->instanceId);
+@@ -745,6 +748,10 @@ static void prv_monitor_callback(uint16_t clientID,
+                                  int dataLength,
+                                  void * userData)
+ {
++    (void) uriP;
++    (void) format;
++    (void) dataLength;
++    (void) data;
+     lwm2m_context_t * lwm2mH = (lwm2m_context_t *) userData;
+     lwm2m_client_t * targetP;
+ 
+@@ -783,11 +790,14 @@ static void prv_monitor_callback(uint16_t clientID,
+ static void prv_quit(char * buffer,
+                      void * user_data)
+ {
++    (void) buffer;
++    (void) user_data;
+     g_quit = 1;
+ }
+ 
+ void handle_sigint(int signum)
+ {
++    (void) signum;
+     g_quit = 2;
+ }
+ 
+@@ -802,7 +812,7 @@ void print_usage(void)
+ }
+ 
+ 
+-int main(int argc, char *argv[])
++int wakaama_test_server_main(void)
+ {
+     int sock;
+     fd_set readfds;
+@@ -813,6 +823,7 @@ int main(int argc, char *argv[])
+     connection_t * connList = NULL;
+     int addressFamily = AF_INET6;
+     int opt;
++    (void) opt;
+     const char * localPort = LWM2M_STANDARD_PORT_STR;
+ 
+     command_desc_t commands[] =
+@@ -874,7 +885,7 @@ int main(int argc, char *argv[])
+ 
+             COMMAND_END_LIST
+     };
+-
++    /*
+     opt = 1;
+     while (opt < argc)
+     {
+@@ -905,6 +916,7 @@ int main(int argc, char *argv[])
+         }
+         opt += 1;
+     }
++    */
+ 
+     sock = create_socket(localPort, addressFamily);
+     if (sock < 0)
+diff --git a/examples/server/test_server.h b/examples/server/test_server.h
+new file mode 100644
+index 0000000..f5a0158
+--- /dev/null
++++ b/examples/server/test_server.h
+@@ -0,0 +1 @@
++int wakaama_test_server_main(void);
+diff --git a/examples/shared/commandline.c b/examples/shared/commandline.c
+index f369329..42f76ad 100644
+--- a/examples/shared/commandline.c
++++ b/examples/shared/commandline.c
+@@ -268,7 +268,7 @@ void output_tlv(FILE * stream,
+             uint8_t tmp;
+ 
+             print_indent(stream, indent+2);
+-            fprintf(stream, "data (%ld bytes):\r\n", dataLen);
++            fprintf(stream, "data (%ld bytes):\r\n", (long int) dataLen);
+             output_buffer(stream, (uint8_t*)buffer + length + dataIndex, dataLen, indent+2);
+ 
+             tmp = buffer[length + dataIndex + dataLen];
+@@ -501,72 +501,72 @@ static void prv_decodeBlock(uint8_t input[4],
+     output[2] = (tmp[2] << 6) | tmp[3];
+ }
+ 
+-size_t base64_decode(uint8_t * dataP,
+-                     size_t dataLen,
+-                     uint8_t ** bufferP)
+-{
+-    size_t data_index;
+-    size_t result_index;
+-    size_t result_len;
+-    
+-    if (dataLen % 4) return 0;
+-    
+-    result_len = (dataLen >> 2) * 3;
+-    *bufferP = (uint8_t *)lwm2m_malloc(result_len);
+-    if (NULL == *bufferP) return 0;
+-    memset(*bufferP, 0, result_len);
+-    
+-    // remove padding
+-    while (dataP[dataLen - 1] == PRV_B64_PADDING)
+-    {
+-        dataLen--;
+-    }
+-    
+-    data_index = 0;
+-    result_index = 0;
+-    while (data_index < dataLen)
+-    {
+-        prv_decodeBlock(dataP + data_index, *bufferP + result_index);
+-        data_index += 4;
+-        result_index += 3;
+-    }
+-    switch (data_index - dataLen)
+-    {
+-    case 0:
+-        break;
+-    case 2:
+-    {
+-        uint8_t tmp[2];
+-
+-        tmp[0] = prv_b64Revert(dataP[dataLen - 2]);
+-        tmp[1] = prv_b64Revert(dataP[dataLen - 1]);
+-
+-        *bufferP[result_index - 3] = (tmp[0] << 2) | (tmp[1] >> 4);
+-        *bufferP[result_index - 2] = (tmp[1] << 4);
+-        result_len -= 2;
+-    }
+-    break;
+-    case 3:
+-    {
+-        uint8_t tmp[3];
+-
+-        tmp[0] = prv_b64Revert(dataP[dataLen - 3]);
+-        tmp[1] = prv_b64Revert(dataP[dataLen - 2]);
+-        tmp[2] = prv_b64Revert(dataP[dataLen - 1]);
+-
+-        *bufferP[result_index - 3] = (tmp[0] << 2) | (tmp[1] >> 4);
+-        *bufferP[result_index - 2] = (tmp[1] << 4) | (tmp[2] >> 2);
+-        *bufferP[result_index - 1] = (tmp[2] << 6);
+-        result_len -= 1;
+-    }
+-    break;
+-    default:
+-        // error
+-        lwm2m_free(*bufferP);
+-        *bufferP = NULL;
+-        result_len = 0;
+-        break;
+-    }
+-
+-    return result_len;
+-}
++size_t base64_decode(uint8_t * dataP,
++                     size_t dataLen,
++                     uint8_t ** bufferP)
++{
++    size_t data_index;
++    size_t result_index;
++    size_t result_len;
++
++    if (dataLen % 4) return 0;
++
++    result_len = (dataLen >> 2) * 3;
++    *bufferP = (uint8_t *)lwm2m_malloc(result_len);
++    if (NULL == *bufferP) return 0;
++    memset(*bufferP, 0, result_len);
++
++    // remove padding
++    while (dataP[dataLen - 1] == PRV_B64_PADDING)
++    {
++        dataLen--;
++    }
++
++    data_index = 0;
++    result_index = 0;
++    while (data_index < dataLen)
++    {
++        prv_decodeBlock(dataP + data_index, *bufferP + result_index);
++        data_index += 4;
++        result_index += 3;
++    }
++    switch (data_index - dataLen)
++    {
++    case 0:
++        break;
++    case 2:
++    {
++        uint8_t tmp[2];
++
++        tmp[0] = prv_b64Revert(dataP[dataLen - 2]);
++        tmp[1] = prv_b64Revert(dataP[dataLen - 1]);
++
++        *bufferP[result_index - 3] = (tmp[0] << 2) | (tmp[1] >> 4);
++        *bufferP[result_index - 2] = (tmp[1] << 4);
++        result_len -= 2;
++    }
++    break;
++    case 3:
++    {
++        uint8_t tmp[3];
++
++        tmp[0] = prv_b64Revert(dataP[dataLen - 3]);
++        tmp[1] = prv_b64Revert(dataP[dataLen - 2]);
++        tmp[2] = prv_b64Revert(dataP[dataLen - 1]);
++
++        *bufferP[result_index - 3] = (tmp[0] << 2) | (tmp[1] >> 4);
++        *bufferP[result_index - 2] = (tmp[1] << 4) | (tmp[2] >> 2);
++        *bufferP[result_index - 1] = (tmp[2] << 6);
++        result_len -= 1;
++    }
++    break;
++    default:
++        // error
++        lwm2m_free(*bufferP);
++        *bufferP = NULL;
++        result_len = 0;
++        break;
++    }
++
++    return result_len;
++}
+diff --git a/examples/shared/connection.c b/examples/shared/connection.c
+index 4ea3f25..99ff3a0 100644
+--- a/examples/shared/connection.c
++++ b/examples/shared/connection.c
+@@ -205,17 +205,18 @@ uint8_t lwm2m_buffer_send(void * sessionH,
+                           size_t length,
+                           void * userdata)
+ {
++    (void) userdata;
+     connection_t * connP = (connection_t*) sessionH;
+ 
+     if (connP == NULL)
+     {
+-        fprintf(stderr, "#> failed sending %lu bytes, missing connection\r\n", length);
++        fprintf(stderr, "#> failed sending %lu bytes, missing connection\r\n", (long unsigned int) length);
+         return COAP_500_INTERNAL_SERVER_ERROR ;
+     }
+ 
+     if (-1 == connection_send(connP, buffer, length))
+     {
+-        fprintf(stderr, "#> failed sending %lu bytes\r\n", length);
++        fprintf(stderr, "#> failed sending %lu bytes\r\n", (long unsigned int) length);
+         return COAP_500_INTERNAL_SERVER_ERROR ;
+     }
+ 
+@@ -226,5 +227,6 @@ bool lwm2m_session_is_equal(void * session1,
+                             void * session2,
+                             void * userData)
+ {
++    (void) userData;
+     return (session1 == session2);
+ }
+diff --git a/examples/shared/connection.h b/examples/shared/connection.h
+index c676bac..5bc97eb 100644
+--- a/examples/shared/connection.h
++++ b/examples/shared/connection.h
+@@ -25,7 +25,7 @@
+ #include <netdb.h>
+ #include <sys/socket.h>
+ #include <sys/stat.h>
+-#include <liblwm2m.h>
++#include "liblwm2m.h"
+ 
+ #define LWM2M_STANDARD_PORT_STR "5683"
+ #define LWM2M_STANDARD_PORT      5683
+diff --git a/examples/shared/platform.c b/examples/shared/platform.c
+index 52fceec..9eae8b9 100644
+--- a/examples/shared/platform.c
++++ b/examples/shared/platform.c
+@@ -14,7 +14,7 @@
+  *    David Navarro, Intel Corporation - initial API and implementation
+  *******************************************************************************/
+ 
+-#include <liblwm2m.h>
++#include "liblwm2m.h"
+ #include <stdlib.h>
+ #include <string.h>
+ #include <stdio.h>
+@@ -30,7 +30,7 @@ void * lwm2m_malloc(size_t s)
+ 
+ void lwm2m_free(void * p)
+ {
+-    return free(p);
++    free(p);
+ }
+ 
+ char * lwm2m_strdup(const char * str)
+-- 
+2.7.4
+
